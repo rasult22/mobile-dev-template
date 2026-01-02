@@ -2,7 +2,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar, useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import "../global.css";
 import queryClient from "../queries/index";
 
 export default function RootLayout() {
