@@ -5,18 +5,11 @@
 # 3. Создать ТЗ через NotebookLM
 
 # 3.5 npx expo-local-docs-mcp - локальный MCP дока для EXPO
-{
-  "mcpServers": {
-    "expo-docs": {
-      "command": "expo-local-docs-mcp"
-    }
-  }
-}
+claude mcp add expo-docs expo-local-docs-mcp
 
 # 4. Создать MVP через Claude Code по ТЗ.
 
 # 4.1 npx expo prebuild -p ios
-# 4.2 npx expo install expo-dev-client
 
 # 5. Создать аппку в AppStoreConnect и в Apple Developer. (buidle id)
 
