@@ -1,6 +1,17 @@
 import type { TimerProfile } from '../types';
 
 export const DEFAULT_PROFILES: TimerProfile[] = [
+  // TODO: Remove test profile after testing
+  {
+    id: 'test',
+    name: '⚡ Тест (3 мин)',
+    workDuration: 3,
+    shortBreakDuration: 1,
+    longBreakDuration: 2,
+    pomodorosPerCycle: 2,
+    description: 'Тестовый профиль для проверки функций.',
+    isCustom: false,
+  },
   {
     id: 'classic',
     name: 'Классика',
@@ -43,7 +54,8 @@ export const DEFAULT_PROFILES: TimerProfile[] = [
   },
 ];
 
-export const DEFAULT_PROFILE_ID = 'classic';
+// TODO: Change back to 'classic' after testing
+export const DEFAULT_PROFILE_ID = 'test';
 
 export const getProfileById = (
   id: string,

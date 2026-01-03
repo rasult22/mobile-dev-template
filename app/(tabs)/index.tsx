@@ -32,9 +32,9 @@ export default function TimerScreen() {
   const [todayPomodoros, setTodayPomodoros] = useState(0);
   const [taskModalVisible, setTaskModalVisible] = useState(false);
 
-  // Track previous state to detect timer completion
+  // Track state for timer completion detection
   const prevModeRef = useRef<TimerMode>(state.mode);
-  const prevTimeRef = useRef<number>(state.timeRemaining);
+  const completionHandledRef = useRef<boolean>(false);
 
   // Calculate responsive timer size
   const { width, height } = useWindowDimensions();
@@ -109,18 +109,17 @@ export default function TimerScreen() {
     }
   }, [state.activeTaskId]);
 
-  // Detect timer completion and trigger effects
+  // Detect timer completion (when timeRemaining hits 0)
   useEffect(() => {
-    const prevMode = prevModeRef.current;
-    const prevTime = prevTimeRef.current;
+    // Timer completed when time reaches 0 and we're in an active mode
+    const timerJustCompleted = state.timeRemaining === 0 &&
+      state.mode !== 'idle' &&
+      !completionHandledRef.current;
 
-    // Timer completed when: time was > 0, now mode changed (work->break or break->work)
-    const timerCompleted = prevTime > 0 &&
-      state.timeRemaining === state.totalTime &&
-      prevMode !== 'idle' &&
-      prevMode !== state.mode;
+    if (timerJustCompleted) {
+      completionHandledRef.current = true;
+      const completedMode = state.mode;
 
-    if (timerCompleted) {
       // Play alarm sound
       if (soundEnabled) {
         playAlarm(selectedAlarmSound);
@@ -132,7 +131,7 @@ export default function TimerScreen() {
       }
 
       // Send notification
-      const isWorkComplete = prevMode === 'work';
+      const isWorkComplete = completedMode === 'work';
       const title = isWorkComplete ? 'Помодоро завершён!' : 'Перерыв окончен!';
       const body = isWorkComplete
         ? 'Время сделать перерыв'
@@ -156,13 +155,17 @@ export default function TimerScreen() {
       loadTodayStats();
       loadTasks();
     }
-
-    // Update refs
-    prevModeRef.current = state.mode;
-    prevTimeRef.current = state.timeRemaining;
-  }, [state.mode, state.timeRemaining, state.totalTime, state.activeTaskId,
+  }, [state.timeRemaining, state.mode, state.activeTaskId,
       soundEnabled, selectedAlarmSound, settings?.hapticEnabled,
       playAlarm, sendImmediateNotification, loadTodayStats, loadTasks]);
+
+  // Reset completion flag when mode changes (new timer started)
+  useEffect(() => {
+    if (prevModeRef.current !== state.mode) {
+      completionHandledRef.current = false;
+      prevModeRef.current = state.mode;
+    }
+  }, [state.mode]);
 
   useFocusEffect(
     useCallback(() => {
