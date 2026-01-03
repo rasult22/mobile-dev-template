@@ -1,17 +1,19 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, StyleSheet, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import { CircularTimer } from '../../components/timer/CircularTimer';
 import { TimerControls } from '../../components/timer/TimerControls';
 import { SessionIndicator } from '../../components/timer/SessionIndicator';
 import { TaskSelectModal } from '../../components/tasks/TaskSelectModal';
 import { useTimerContext } from '../../store/timerContext';
-import { useTickingSound } from '../../hooks/useSound';
+import { useTickingSound, useAlarmSound, useAmbientSound } from '../../hooks/useSound';
+import { useNotifications } from '../../hooks/useNotifications';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
-import { getTasks, getDayStats, getTodayDate } from '../../store/storage';
-import type { Task } from '../../types';
+import { getTasks, getDayStats, getTodayDate, updateTask } from '../../store/storage';
+import type { Task, TimerMode, AlarmSound, AmbientSound } from '../../types';
 
 export default function TimerScreen() {
   const {
@@ -30,6 +32,10 @@ export default function TimerScreen() {
   const [todayPomodoros, setTodayPomodoros] = useState(0);
   const [taskModalVisible, setTaskModalVisible] = useState(false);
 
+  // Track previous state to detect timer completion
+  const prevModeRef = useRef<TimerMode>(state.mode);
+  const prevTimeRef = useRef<number>(state.timeRemaining);
+
   // Calculate responsive timer size
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -39,11 +45,23 @@ export default function TimerScreen() {
   const maxTimerSize = Math.min(width * 0.75, availableHeight - reservedSpace, 300);
   const timerSize = Math.max(maxTimerSize, 200); // Minimum 200px
 
-  // Ticking sound
+  // Sound hooks
+  const soundEnabled = settings?.soundEnabled ?? true;
   const tickingEnabled = settings?.tickingEnabled ?? false;
+  const ambientEnabled = settings?.ambientSoundEnabled ?? false;
+  const selectedAlarmSound = (settings?.selectedAlarmSound ?? 'bell') as AlarmSound;
+  const selectedAmbientSound = (settings?.selectedAmbientSound ?? 'none') as AmbientSound;
+
   const { start: startTicking, stop: stopTicking } = useTickingSound({
     enabled: tickingEnabled,
   });
+  const { play: playAlarm } = useAlarmSound({ enabled: soundEnabled });
+  const { play: playAmbient, stop: stopAmbient } = useAmbientSound({
+    enabled: ambientEnabled,
+  });
+
+  // Notifications
+  const { sendImmediateNotification } = useNotifications();
 
   // Control ticking sound based on timer state
   useEffect(() => {
@@ -57,6 +75,25 @@ export default function TimerScreen() {
       stopTicking();
     };
   }, [state.isRunning, state.mode, tickingEnabled, startTicking, stopTicking]);
+
+  // Control ambient sound based on timer state
+  useEffect(() => {
+    if (state.isRunning && state.mode === 'work' && ambientEnabled && selectedAmbientSound !== 'none') {
+      playAmbient(selectedAmbientSound);
+    } else {
+      stopAmbient();
+    }
+
+    return () => {
+      stopAmbient();
+    };
+  }, [state.isRunning, state.mode, ambientEnabled, selectedAmbientSound, playAmbient, stopAmbient]);
+
+  // Helper to load today stats
+  const loadTodayStats = useCallback(async () => {
+    const stats = await getDayStats(getTodayDate());
+    setTodayPomodoros(stats.completedPomodoros);
+  }, []);
 
   // Load tasks list when screen is focused
   const loadTasks = useCallback(async () => {
@@ -72,6 +109,61 @@ export default function TimerScreen() {
     }
   }, [state.activeTaskId]);
 
+  // Detect timer completion and trigger effects
+  useEffect(() => {
+    const prevMode = prevModeRef.current;
+    const prevTime = prevTimeRef.current;
+
+    // Timer completed when: time was > 0, now mode changed (work->break or break->work)
+    const timerCompleted = prevTime > 0 &&
+      state.timeRemaining === state.totalTime &&
+      prevMode !== 'idle' &&
+      prevMode !== state.mode;
+
+    if (timerCompleted) {
+      // Play alarm sound
+      if (soundEnabled) {
+        playAlarm(selectedAlarmSound);
+      }
+
+      // Haptic feedback
+      if (settings?.hapticEnabled) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      // Send notification
+      const isWorkComplete = prevMode === 'work';
+      const title = isWorkComplete ? 'Помодоро завершён!' : 'Перерыв окончен!';
+      const body = isWorkComplete
+        ? 'Время сделать перерыв'
+        : 'Готов к новому помодоро?';
+      sendImmediateNotification(title, body);
+
+      // Increment task pomodoros if work session completed
+      if (isWorkComplete && state.activeTaskId) {
+        (async () => {
+          const tasks = await getTasks();
+          const task = tasks.find(t => t.id === state.activeTaskId);
+          if (task) {
+            await updateTask(state.activeTaskId!, {
+              completedPomodoros: task.completedPomodoros + 1,
+            });
+          }
+        })();
+      }
+
+      // Reload today stats and tasks
+      loadTodayStats();
+      loadTasks();
+    }
+
+    // Update refs
+    prevModeRef.current = state.mode;
+    prevTimeRef.current = state.timeRemaining;
+  }, [state.mode, state.timeRemaining, state.totalTime, state.activeTaskId,
+      soundEnabled, selectedAlarmSound, settings?.hapticEnabled,
+      playAlarm, sendImmediateNotification, loadTodayStats, loadTasks]);
+
   useFocusEffect(
     useCallback(() => {
       loadTasks();
@@ -83,18 +175,10 @@ export default function TimerScreen() {
     setContextActiveTask(taskId);
   }, [setContextActiveTask]);
 
-  // Load today's stats
+  // Load today's stats on mount
   useEffect(() => {
-    async function loadTodayStats() {
-      const stats = await getDayStats(getTodayDate());
-      setTodayPomodoros(stats.completedPomodoros);
-    }
     loadTodayStats();
-
-    // Refresh when timer completes a pomodoro
-    const interval = setInterval(loadTodayStats, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  }, [loadTodayStats]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

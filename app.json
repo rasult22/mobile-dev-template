@@ -12,7 +12,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.rasult22.pomodoro-flow",
       "infoPlist": {
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
