@@ -25,20 +25,23 @@ export default function StatsScreen() {
     }, [loadStats])
   );
 
-  // Generate calendar days for current month
-  const generateCalendarDays = () => {
+  // Generate calendar weeks for current month
+  const generateCalendarWeeks = () => {
     const today = new Date();
     const year = today.getFullYear();
     const month = today.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
+    // getDay() returns 0 for Sunday, 1 for Monday, etc.
+    // We need to convert to Monday-first format: Mon=0, Tue=1, ..., Sun=6
     const startDayOfWeek = firstDay.getDay();
+    const emptyDays = (startDayOfWeek + 6) % 7; // Convert to Monday-first
 
     const days: (number | null)[] = [];
 
     // Add empty slots for days before the first of the month
-    for (let i = 0; i < (startDayOfWeek === 0 ? 6 : startDayOfWeek - 1); i++) {
+    for (let i = 0; i < emptyDays; i++) {
       days.push(null);
     }
 
@@ -47,7 +50,18 @@ export default function StatsScreen() {
       days.push(day);
     }
 
-    return days;
+    // Pad end to complete the last week
+    while (days.length % 7 !== 0) {
+      days.push(null);
+    }
+
+    // Split into weeks (arrays of 7 days)
+    const weeks: (number | null)[][] = [];
+    for (let i = 0; i < days.length; i += 7) {
+      weeks.push(days.slice(i, i + 7));
+    }
+
+    return weeks;
   };
 
   const getColorForPomodoros = (count: number): string => {
@@ -58,7 +72,7 @@ export default function StatsScreen() {
     return colors.primary;
   };
 
-  const calendarDays = generateCalendarDays();
+  const calendarWeeks = generateCalendarWeeks();
   const today = new Date();
   const monthNames = [
     'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -141,37 +155,41 @@ export default function StatsScreen() {
 
           {/* Calendar grid */}
           <View style={styles.calendarGrid}>
-            {calendarDays.map((day, index) => {
-              if (day === null) {
-                return <View key={`empty-${index}`} style={styles.dayCell} />;
-              }
+            {calendarWeeks.map((week, weekIndex) => (
+              <View key={`week-${weekIndex}`} style={styles.weekRow}>
+                {week.map((day, dayIndex) => {
+                  if (day === null) {
+                    return <View key={`empty-${weekIndex}-${dayIndex}`} style={styles.dayCell} />;
+                  }
 
-              const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const dayStats = monthStats[dateStr];
-              const pomodoros = dayStats?.completedPomodoros || 0;
-              const isToday = day === today.getDate();
+                  const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const dayData = monthStats[dateStr];
+                  const pomodoros = dayData?.completedPomodoros || 0;
+                  const isToday = day === today.getDate();
 
-              return (
-                <View
-                  key={day}
-                  style={[
-                    styles.dayCell,
-                    { backgroundColor: getColorForPomodoros(pomodoros) },
-                    isToday && styles.todayCell,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dayNumber,
-                      pomodoros > 0 && styles.dayNumberActive,
-                      isToday && styles.todayNumber,
-                    ]}
-                  >
-                    {day}
-                  </Text>
-                </View>
-              );
-            })}
+                  return (
+                    <View
+                      key={day}
+                      style={[
+                        styles.dayCell,
+                        { backgroundColor: getColorForPomodoros(pomodoros) },
+                        isToday && styles.todayCell,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.dayNumber,
+                          pomodoros > 0 && styles.dayNumberActive,
+                          isToday && styles.todayNumber,
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
           </View>
 
           {/* Legend */}
@@ -293,6 +311,7 @@ const styles = StyleSheet.create({
   },
   weekdayRow: {
     flexDirection: 'row',
+    gap: 2,
     marginBottom: spacing.sm,
   },
   weekdayLabel: {
@@ -302,18 +321,22 @@ const styles = StyleSheet.create({
     fontSize: typography.caption,
   },
   calendarGrid: {
+    gap: 2,
+  },
+  weekRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    gap: 2,
   },
   dayCell: {
-    width: `${100 / 7}%`,
+    flex: 1,
     aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: borderRadius.sm,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
   todayCell: {
-    borderWidth: 2,
     borderColor: colors.primary,
   },
   dayNumber: {

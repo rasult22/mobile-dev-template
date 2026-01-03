@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import Animated, {
   useAnimatedProps,
@@ -12,32 +12,36 @@ import type { TimerMode } from '../../types';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const TIMER_SIZE = Math.min(SCREEN_WIDTH * 0.8, 320);
 const STROKE_WIDTH = 12;
-const RADIUS = (TIMER_SIZE - STROKE_WIDTH) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 interface CircularTimerProps {
   timeRemaining: number; // in seconds
   totalTime: number; // in seconds
   mode: TimerMode;
   isRunning: boolean;
+  size?: number;
 }
+
+const DEFAULT_SIZE = 280;
 
 export function CircularTimer({
   timeRemaining,
   totalTime,
   mode,
   isRunning,
+  size = DEFAULT_SIZE,
 }: CircularTimerProps) {
+  const timerSize = size;
+  const radius = (timerSize - STROKE_WIDTH) / 2;
+  const circumference = 2 * Math.PI * radius;
+
   const progress = useDerivedValue(() => {
     if (totalTime === 0) return 0;
     return timeRemaining / totalTime;
   }, [timeRemaining, totalTime]);
 
   const animatedProps = useAnimatedProps(() => {
-    const strokeDashoffset = CIRCUMFERENCE * (1 - progress.value);
+    const strokeDashoffset = circumference * (1 - progress.value);
     return {
       strokeDashoffset: withTiming(strokeDashoffset, {
         duration: 300,
@@ -56,27 +60,27 @@ export function CircularTimer({
   };
 
   return (
-    <View style={styles.container}>
-      <Svg width={TIMER_SIZE} height={TIMER_SIZE} style={styles.svg}>
-        <G rotation="-90" origin={`${TIMER_SIZE / 2}, ${TIMER_SIZE / 2}`}>
+    <View style={[styles.container, { width: timerSize, height: timerSize }]}>
+      <Svg width={timerSize} height={timerSize} style={styles.svg}>
+        <G rotation="-90" origin={`${timerSize / 2}, ${timerSize / 2}`}>
           {/* Background circle */}
           <Circle
-            cx={TIMER_SIZE / 2}
-            cy={TIMER_SIZE / 2}
-            r={RADIUS}
+            cx={timerSize / 2}
+            cy={timerSize / 2}
+            r={radius}
             stroke={colors.surfaceLight}
             strokeWidth={STROKE_WIDTH}
             fill="transparent"
           />
           {/* Progress circle */}
           <AnimatedCircle
-            cx={TIMER_SIZE / 2}
-            cy={TIMER_SIZE / 2}
-            r={RADIUS}
+            cx={timerSize / 2}
+            cy={timerSize / 2}
+            r={radius}
             stroke={timerColor}
             strokeWidth={STROKE_WIDTH}
             fill="transparent"
-            strokeDasharray={CIRCUMFERENCE}
+            strokeDasharray={circumference}
             animatedProps={animatedProps}
             strokeLinecap="round"
           />
@@ -98,8 +102,6 @@ export function CircularTimer({
 
 const styles = StyleSheet.create({
   container: {
-    width: TIMER_SIZE,
-    height: TIMER_SIZE,
     justifyContent: 'center',
     alignItems: 'center',
   },

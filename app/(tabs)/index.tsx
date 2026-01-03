@@ -1,11 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, StyleSheet, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import { CircularTimer } from '../../components/timer/CircularTimer';
 import { TimerControls } from '../../components/timer/TimerControls';
 import { SessionIndicator } from '../../components/timer/SessionIndicator';
+import { TaskSelectModal } from '../../components/tasks/TaskSelectModal';
 import { useTimerContext } from '../../store/timerContext';
-import { colors, spacing, typography } from '../../constants/theme';
+import { useTickingSound } from '../../hooks/useSound';
+import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { getTasks, getDayStats, getTodayDate } from '../../store/storage';
 import type { Task } from '../../types';
 
@@ -18,24 +22,66 @@ export default function TimerScreen() {
     pause,
     reset,
     skipBreak,
+    setActiveTask: setContextActiveTask,
   } = useTimerContext();
 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
   const [todayPomodoros, setTodayPomodoros] = useState(0);
+  const [taskModalVisible, setTaskModalVisible] = useState(false);
 
-  // Load active task title
+  // Calculate responsive timer size
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const availableHeight = height - insets.top - insets.bottom - 60; // 60 for tab bar
+  // Reserve space for other elements: header(60) + session(80) + task button(60) + controls(100) + paddings(60)
+  const reservedSpace = 360;
+  const maxTimerSize = Math.min(width * 0.75, availableHeight - reservedSpace, 300);
+  const timerSize = Math.max(maxTimerSize, 200); // Minimum 200px
+
+  // Ticking sound
+  const tickingEnabled = settings?.tickingEnabled ?? false;
+  const { start: startTicking, stop: stopTicking } = useTickingSound({
+    enabled: tickingEnabled,
+  });
+
+  // Control ticking sound based on timer state
   useEffect(() => {
-    async function loadActiveTask() {
-      if (state.activeTaskId) {
-        const tasks = await getTasks();
-        const task = tasks.find((t) => t.id === state.activeTaskId);
-        setActiveTask(task || null);
-      } else {
-        setActiveTask(null);
-      }
+    if (state.isRunning && state.mode === 'work' && tickingEnabled) {
+      startTicking();
+    } else {
+      stopTicking();
     }
-    loadActiveTask();
+
+    return () => {
+      stopTicking();
+    };
+  }, [state.isRunning, state.mode, tickingEnabled, startTicking, stopTicking]);
+
+  // Load tasks list when screen is focused
+  const loadTasks = useCallback(async () => {
+    const tasks = await getTasks();
+    setAllTasks(tasks);
+
+    // Update active task
+    if (state.activeTaskId) {
+      const task = tasks.find((t) => t.id === state.activeTaskId);
+      setActiveTask(task || null);
+    } else {
+      setActiveTask(null);
+    }
   }, [state.activeTaskId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadTasks();
+    }, [loadTasks])
+  );
+
+  // Handle task selection
+  const handleSelectTask = useCallback((taskId: string | undefined) => {
+    setContextActiveTask(taskId);
+  }, [setContextActiveTask]);
 
   // Load today's stats
   useEffect(() => {
@@ -52,7 +98,11 @@ export default function TimerScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
         {/* Header with today's count */}
         <View style={styles.header}>
           <Text style={styles.todayLabel}>Сегодня</Text>
@@ -79,8 +129,35 @@ export default function TimerScreen() {
             totalTime={state.totalTime}
             mode={state.mode}
             isRunning={state.isRunning}
+            size={timerSize}
           />
         </View>
+
+        {/* Task selection button */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.taskButton,
+            pressed && styles.taskButtonPressed,
+          ]}
+          onPress={() => setTaskModalVisible(true)}
+        >
+          {activeTask ? (
+            <View style={styles.taskButtonContent}>
+              <View style={styles.taskButtonInfo}>
+                <Text style={styles.taskButtonLabel}>Текущая задача</Text>
+                <Text style={styles.taskButtonTitle} numberOfLines={1}>
+                  {activeTask.title}
+                </Text>
+              </View>
+              <Ionicons name="swap-horizontal" size={20} color={colors.textSecondary} />
+            </View>
+          ) : (
+            <View style={styles.taskButtonContent}>
+              <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+              <Text style={styles.taskButtonPlaceholder}>Выбрать задачу</Text>
+            </View>
+          )}
+        </Pressable>
 
         {/* Controls */}
         <TimerControls
@@ -93,7 +170,16 @@ export default function TimerScreen() {
           onSkipBreak={skipBreak}
           hapticEnabled={settings?.hapticEnabled}
         />
-      </View>
+      </ScrollView>
+
+      {/* Task selection modal */}
+      <TaskSelectModal
+        visible={taskModalVisible}
+        tasks={allTasks}
+        selectedTaskId={state.activeTaskId}
+        onSelect={handleSelectTask}
+        onClose={() => setTaskModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -123,15 +209,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
-    justifyContent: 'space-between',
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.lg,
+    gap: spacing.md,
   },
   header: {
     alignItems: 'center',
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
   },
   todayLabel: {
     color: colors.textMuted,
@@ -156,6 +242,38 @@ const styles = StyleSheet.create({
   timerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: spacing.md,
+  },
+  taskButton: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  taskButtonPressed: {
+    opacity: 0.8,
+  },
+  taskButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  taskButtonInfo: {
     flex: 1,
+  },
+  taskButtonLabel: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+  },
+  taskButtonTitle: {
+    fontSize: typography.body,
+    fontWeight: typography.medium,
+    color: colors.text,
+  },
+  taskButtonPlaceholder: {
+    fontSize: typography.body,
+    color: colors.primary,
+    fontWeight: typography.medium,
   },
 });

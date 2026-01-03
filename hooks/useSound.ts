@@ -16,6 +16,8 @@ const AMBIENT_SOURCES: Record<Exclude<AmbientSound, 'none'>, number> = {
   whiteNoise: require('../assets/sounds/white-noise.mp3'),
 };
 
+const TICK_SOURCE = require('../assets/sounds/tick.mp3');
+
 interface UseSoundOptions {
   enabled?: boolean;
 }
@@ -62,32 +64,38 @@ export function useAlarmSound({ enabled = true }: UseSoundOptions = {}) {
 }
 
 export function useTickingSound({ enabled = true }: UseSoundOptions = {}) {
+  const tickPlayer = useAudioPlayer(TICK_SOURCE);
   const isPlayingRef = useRef(false);
 
   const start = useCallback(async () => {
     if (!enabled || isPlayingRef.current) return;
 
     try {
+      tickPlayer.loop = true;
+      tickPlayer.seekTo(0);
+      tickPlayer.play();
       isPlayingRef.current = true;
-      // Note: Ticking sound would require a separate short audio file
-      // that loops. For now, this is a placeholder.
-      console.log('Ticking sound not implemented yet');
     } catch (error) {
       console.error('Error starting ticking sound:', error);
     }
-  }, [enabled]);
+  }, [enabled, tickPlayer]);
 
   const stop = useCallback(async () => {
     if (!isPlayingRef.current) return;
 
     try {
+      tickPlayer.pause();
       isPlayingRef.current = false;
     } catch (error) {
       console.error('Error stopping ticking sound:', error);
     }
-  }, []);
+  }, [tickPlayer]);
 
-  return { start, stop, isPlaying: isPlayingRef.current };
+  const setVolume = useCallback((volume: number) => {
+    tickPlayer.volume = volume;
+  }, [tickPlayer]);
+
+  return { start, stop, setVolume, isPlaying: isPlayingRef.current };
 }
 
 export function useAmbientSound({ enabled = true }: UseSoundOptions = {}) {
